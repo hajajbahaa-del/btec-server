@@ -1038,5 +1038,41 @@ window.addEventListener("hashchange", route);
 renderNav();
 route();
 </script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+  const supabaseUrl = "PUT_SUPABASE_PROJECT_URL";
+  const supabaseKey = "PUT_SUPABASE_ANON_KEY";
+
+  const supabase = supabase.createClient(supabaseUrl, supabaseKey);
+
+  async function loadLessons() {
+    const { data, error } = await supabase
+      .from("lessons")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error(error);
+      return;
+    }
+
+    const container = document.getElementById("lessons");
+    if (!container) return;
+
+    container.innerHTML = "";
+    data.forEach(l => {
+      const div = document.createElement("lesson");
+      div.innerHTML = `
+        <h3>${l.title}</h3>
+        <p>${l.description || ""}</p>
+        ${l.file_url ? `<a href="${l.file_url}" target="_blank">تحميل الدرس</a>` : ""}
+      `;
+      container.appendChild(div);
+    });
+  }
+
+  loadLessons();
+</script>
+
 </body>
 </html>
