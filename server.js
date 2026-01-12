@@ -15,8 +15,8 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // غيّرهم لأي شي بدك (يفضل تحطهم كـ Environment Variables على Render/Railway)
-const ADMIN_USER = process.env.ADMIN_USER || "bahaahajaj@btec.com";
-const ADMIN_PASS = process.env.ADMIN_PASS || "bahaahajaj0775135361btec2007";
+const ADMIN_USER = process.env.ADMIN_USER || "bahaa_hajaj";
+const ADMIN_PASS = process.env.ADMIN_PASS || "bahaahajaj0775135361n";
 
 // توكن بسيط (جلسة) بالذاكرة
 const SESSIONS = new Map(); // token -> {username, createdAt}
