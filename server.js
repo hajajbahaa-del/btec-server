@@ -1,6 +1,6 @@
 // server.js
 // BTEC Server (Node + Express + SQLite + Uploads)
-// تشغيل: npm install ثم npm start
+// تشغيل محلي: npm install ثم node server.js
 
 const path = require("path");
 const fs = require("fs");
@@ -14,7 +14,11 @@ const app = express();
 // ====== إعدادات ======
 const PORT = process.env.PORT || 3000;
 
-// غيّرهم لأي شي بدك (يفضل تحطهم كـ Environment Variables على Render/Railway)
+// ✅ NEW: مسار بيانات ثابت (لـ DB + uploads) على استضافة فيها disk دائم
+// على Render/VPS/Fly: خلّيه /data (وتعمل mount disk على /data)
+const DATA_DIR = process.env.DATA_DIR || __dirname;
+
+// غيّرهم لأي شي بدك (يفضل تحطهم كـ Environment Variables)
 const ADMIN_USER = process.env.ADMIN_USER || "bahaa_hajaj";
 const ADMIN_PASS = process.env.ADMIN_PASS || "bahaahajaj0775135361n";
 
@@ -30,7 +34,8 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, "public")));
 
 // ====== uploads folder ======
-const uploadsDir = path.join(__dirname, "uploads");
+// ✅ NEW: خلي uploads داخل DATA_DIR بدل المشروع
+const uploadsDir = path.join(DATA_DIR, "uploads");
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 app.use("/uploads", express.static(uploadsDir));
 
@@ -40,12 +45,13 @@ const storage = multer.diskStorage({
   filename: (req, file, cb) => {
     const safe = (file.originalname || "file").replace(/[^\w.\-()+\s]/g, "_");
     cb(null, Date.now() + "_" + safe);
-  }
+  },
 });
 const upload = multer({ storage });
 
 // ====== Database (SQLite) ======
-const dbPath = path.join(__dirname, "btec.db");
+// ✅ NEW: خلي DB داخل DATA_DIR بدل __dirname
+const dbPath = path.join(DATA_DIR, "btec.db");
 const db = new Database(dbPath);
 
 // إنشاء الجداول
@@ -130,8 +136,15 @@ app.get("/api/public/state", (req, res) => {
   const generations = db.prepare("SELECT * FROM generations").all();
   const tasks = db.prepare("SELECT * FROM tasks ORDER BY createdAt DESC").all();
   const taskDocs = db.prepare("SELECT * FROM task_docs ORDER BY createdAt DESC").all();
-  const pythonLessons = db.prepare("SELECT id,title,createdAt,slidesJson FROM python_lessons ORDER BY createdAt DESC").all()
-    .map(r => ({ id: r.id, title: r.title, createdAt: r.createdAt, slides: JSON.parse(r.slidesJson || "[]") }));
+  const pythonLessons = db
+    .prepare("SELECT id,title,createdAt,slidesJson FROM python_lessons ORDER BY createdAt DESC")
+    .all()
+    .map((r) => ({
+      id: r.id,
+      title: r.title,
+      createdAt: r.createdAt,
+      slides: JSON.parse(r.slidesJson || "[]"),
+    }));
 
   res.json({ ok: true, data: { generations, tasks, taskDocs, pythonLessons } });
 });
@@ -153,7 +166,7 @@ app.post("/api/admin/generations", requireAdmin, (req, res) => {
 app.delete("/api/admin/generations/:id", requireAdmin, (req, res) => {
   const id = req.params.id;
   // حذف المهام والملفات التابعة
-  const tasks = db.prepare("SELECT id FROM tasks WHERE genId=?").all(id).map(x => x.id);
+  const tasks = db.prepare("SELECT id FROM tasks WHERE genId=?").all(id).map((x) => x.id);
   const delDoc = db.prepare("DELETE FROM task_docs WHERE taskId=?");
   for (const tid of tasks) delDoc.run(tid);
   db.prepare("DELETE FROM tasks WHERE genId=?").run(id);
@@ -166,12 +179,17 @@ app.post("/api/admin/tasks", requireAdmin, (req, res) => {
   const genId = (req.body?.genId || "").trim();
   const title = (req.body?.title || "").trim();
   const descr = (req.body?.descr || "").trim();
-  if (!genId) return res.status(400).json({ ok: false, msg: "genId مطلوب" });
+  if (!genId) return res.status(400).json({ ok: false, msg: "genId مطلوب" };
   if (!title) return res.status(400).json({ ok: false, msg: "عنوان المهمة مطلوب" });
 
   const id = uid("t");
-  db.prepare("INSERT INTO tasks (id,genId,title,descr,createdAt) VALUES (?,?,?,?,?)")
-    .run(id, genId, title, descr, Date.now());
+  db.prepare("INSERT INTO tasks (id,genId,title,descr,createdAt) VALUES (?,?,?,?,?)").run(
+    id,
+    genId,
+    title,
+    descr,
+    Date.now()
+  );
   res.json({ ok: true, id });
 });
 
@@ -194,17 +212,18 @@ app.post("/api/admin/taskdocs/upload", requireAdmin, upload.single("file"), (req
   const id = uid("doc");
   const url = "/uploads/" + req.file.filename;
 
-  db.prepare("INSERT INTO task_docs (id,taskId,displayName,filename,mime,size,url,createdAt) VALUES (?,?,?,?,?,?,?,?)")
-    .run(
-      id,
-      taskId,
-      displayName,
-      req.file.originalname || req.file.filename,
-      req.file.mimetype || "application/octet-stream",
-      req.file.size || 0,
-      url,
-      Date.now()
-    );
+  db.prepare(
+    "INSERT INTO task_docs (id,taskId,displayName,filename,mime,size,url,createdAt) VALUES (?,?,?,?,?,?,?,?)"
+  ).run(
+    id,
+    taskId,
+    displayName,
+    req.file.originalname || req.file.filename,
+    req.file.mimetype || "application/octet-stream",
+    req.file.size || 0,
+    url,
+    Date.now()
+  );
 
   res.json({ ok: true, id, url });
 });
@@ -213,9 +232,12 @@ app.delete("/api/admin/taskdocs/:id", requireAdmin, (req, res) => {
   const id = req.params.id;
   const row = db.prepare("SELECT url FROM task_docs WHERE id=?").get(id);
   if (row?.url) {
-    const localPath = path.join(__dirname, row.url.replace("/uploads/", "uploads/"));
+    // ✅ NEW: احسب المسار الحقيقي من DATA_DIR
+    const localPath = path.join(DATA_DIR, row.url.replace("/uploads/", "uploads/"));
     if (fs.existsSync(localPath)) {
-      try { fs.unlinkSync(localPath); } catch {}
+      try {
+        fs.unlinkSync(localPath);
+      } catch {}
     }
   }
   db.prepare("DELETE FROM task_docs WHERE id=?").run(id);
@@ -232,15 +254,19 @@ app.post("/api/admin/pythonlessons", requireAdmin, (req, res) => {
     return res.status(400).json({ ok: false, msg: "لازم تضيف على الأقل شريحة واحدة" });
   }
 
-  const cleanSlides = slides.map(s => ({
+  const cleanSlides = slides.map((s) => ({
     title: (s?.title || "").trim() || "شريحة",
-    bullets: Array.isArray(s?.bullets) ? s.bullets.map(x => String(x).trim()).filter(Boolean) : [],
-    code: (s?.code || "").trim()
+    bullets: Array.isArray(s?.bullets) ? s.bullets.map((x) => String(x).trim()).filter(Boolean) : [],
+    code: (s?.code || "").trim(),
   }));
 
   const id = uid("py");
-  db.prepare("INSERT INTO python_lessons (id,title,createdAt,slidesJson) VALUES (?,?,?,?)")
-    .run(id, title, Date.now(), JSON.stringify(cleanSlides));
+  db.prepare("INSERT INTO python_lessons (id,title,createdAt,slidesJson) VALUES (?,?,?,?)").run(
+    id,
+    title,
+    Date.now(),
+    JSON.stringify(cleanSlides)
+  );
 
   res.json({ ok: true, id });
 });
@@ -258,4 +284,7 @@ app.get("*", (req, res) => {
 
 app.listen(PORT, () => {
   console.log("BTEC server running on port", PORT);
+  console.log("DATA_DIR:", DATA_DIR);
+  console.log("DB:", dbPath);
+  console.log("UPLOADS:", uploadsDir);
 });
